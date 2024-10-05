@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块游戏</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-image: url('wp12523376.jpg');
+            background-size: cover;
+            background-position: center;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            background: linear-gradient(to bottom, rgba(255, 0, 0, 0.2), rgba(0, 0, 255, 0.2));
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 255, 0.3);
+        }
+        canvas {
+            border: 2px solid transparent;
+            border-image: linear-gradient(to bottom, red, blue);
+            border-image-slice: 1;
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        #score, #instructions {
+            text-align: center;
+            font-size: 24px;
+            margin-top: 10px;
+            background: linear-gradient(to right, #ff9999, #9999ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+        }
+        #start-button {
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            font-size: 18px;
+            background: linear-gradient(to right, #ff3333, #3333ff);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #start-button:hover {
+            background: linear-gradient(to right, #ff6666, #6666ff);
+        }
+        #instructions {
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="tetris" width="240" height="400"></canvas>
+        <div id="score">分数: 0</div>
+        <div id="instructions">
+            操作说明：<br>
+            ← → : 左右移动<br>
+            ↓ : 加速下落<br>
+            ↑ : 旋转方块
+        </div>
+        <button id="start-button">开始游戏</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const grid = 20;
+        const tetrominoes = [
+            [[1, 1, 1, 1]],
+            [[1, 1, 1], [0, 1, 0]],
+            [[1, 1, 1], [1, 0, 0]],
+            [[1, 1], [1, 1]],
+            [[1, 1, 0], [0, 1, 1]],
+            [[0, 1, 1], [1, 1, 0]],
+            [[0, 1, 0], [1, 1, 1]]
+        ];
+
+        let score = 0;
+        let board = [];
+        for (let row = 0; row < 20; row++) {
+            board[row] = [];
+            for (let col = 0; col < 12; col++) {
+                board[row][col] = 0;
+            }
+        }
+
+        let piece = {
+            position: {x: 5, y: 0},
+            shape: tetrominoes[Math.floor(Math.random() * tetrominoes.length)]
+        };
+
+        let isGameRunning = false; // 添加这行来初始化 isGameRunning
+
+        function drawBoard() {
+            for (let row = 0; row < 20; row++) {
+                for (let col = 0; col < 12; col++) {
+                    if (board[row][col]) {
+                        const gradient = context.createLinearGradient(col * grid, row * grid, (col + 1) * grid, (row + 1) * grid);
+                        if (board[row][col] === 1) {
+                            gradient.addColorStop(0, 'red');
+                            gradient.addColorStop(1, 'blue');
+                        } else {
+                            gradient.addColorStop(0, 'white');
+                            gradient.addColorStop(1, 'white');
+                        }
+                        context.fillStyle = gradient;
+                        context.fillRect(col * grid, row * grid, grid - 1, grid - 1);
+                    }
+                }
+            }
+        }
+
+        function drawPiece() {
+            piece.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        const gradient = context.createLinearGradient(
+                            (piece.position.x + x) * grid, 
+                            (piece.position.y + y) * grid, 
+                            (piece.position.x + x + 1) * grid, 
+                            (piece.position.y + y + 1) * grid
+                        );
+                        gradient.addColorStop(0, 'red');
+                        gradient.addColorStop(1, 'blue');
+                        context.fillStyle = gradient;
+                        context.fillRect((piece.position.x + x) * grid, (piece.position.y + y) * grid, grid - 1, grid - 1);
+                    }
+                });
+            });
+        }
+
+        function merge() {
+            piece.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        board[piece.position.y + y][piece.position.x + x] = value;
+                    }
+                });
+            });
+        }
+
+        function collision() {
+            for (let y = 0; y < piece.shape.length; y++) {
+                for (let x = 0; x < piece.shape[y].length; x++) {
+                    if (piece.shape[y][x] &&
+                        (board[piece.position.y + y] &&
+                        board[piece.position.y + y][piece.position.x + x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function removeRows() {
+            let rowsToRemove = [];
+            outer: for (let y = board.length - 1; y >= 0; y--) {
+                for (let x = 0; x < board[y].length; x++) {
+                    if (board[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                rowsToRemove.push(y);
+            }
+
+            if (rowsToRemove.length > 0) {
+                flashRows(rowsToRemove, 3, () => {
+                    rowsToRemove.forEach(y => {
+                        board.splice(y, 1);
+                        board.unshift(new Array(12).fill(0));
+                    });
+                    score += rowsToRemove.length * 10;
+                    document.getElementById('score').textContent = '分数: ' + score;
+                });
+            }
+        }
+
+        function flashRows(rows, times, callback) {
+            if (times <= 0) {
+                callback();
+                return;
+            }
+
+            rows.forEach(y => {
+                for (let x = 0; x < board[y].length; x++) {
+                    board[y][x] = times % 2 === 0 ? 1 : 2;
+                }
+            });
+
+            drawBoard();
+
+            setTimeout(() => flashRows(rows, times - 1, callback), 100);
+        }
+
+        let lastTime = 0;
+        let dropInterval = 600; // 将初始下落间隔改为600毫秒
+
+        function calculateDropInterval() {
+            // 每30分减少20%的下落时间，最快为原始速度的5%
+            const speedIncrease = Math.min(0.95, Math.floor(score / 30) * 0.20);
+            return Math.max(30, 600 * (1 - speedIncrease));
+        }
+
+        let dropCounter = 0;
+
+        function gameLoop(time = 0) {
+            if (!isGameRunning) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            dropInterval = calculateDropInterval(); // 更新下落间隔
+
+            if (dropCounter > dropInterval) {
+                piece.position.y++;
+                if (collision()) {
+                    piece.position.y--;
+                    merge();
+                    removeRows();
+                    piece.position = {x: 5, y: 0};
+                    piece.shape = tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
+                    if (collision()) {
+                        resetGame();
+                        alert('游戏结束！你的得分是：' + score);
+                        return;
+                    }
+                }
+                dropCounter = 0;
+            }
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            drawBoard();
+            drawPiece();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            // 重置游戏状态
+            board.forEach(row => row.fill(0));
+            score = 0;
+            document.getElementById('score').textContent = '分数: 0';
+            piece.position = {x: 5, y: 0};
+            piece.shape = tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
+            
+            // 隐藏开始按钮
+            document.getElementById('start-button').style.display = 'none';
+            
+            // 开始游戏循环
+            isGameRunning = true;
+            lastTime = 0;
+            dropCounter = 0;
+            dropInterval = 600; // 重置下落间隔为600毫秒
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resetGame() {
+            isGameRunning = false;
+            board.forEach(row => row.fill(0));
+            score = 0;
+            document.getElementById('score').textContent = '分数: 0';
+            document.getElementById('start-button').style.display = 'block';
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            drawBoard();
+        }
+
+        document.getElementById('start-button').addEventListener('click', startGame);
+
+        document.addEventListener('keydown', event => {
+            if (!isGameRunning) return; // 如果游戏没有运行，不处理按键事件
+
+            if (event.keyCode === 37) { // 左箭头
+                piece.position.x--;
+                if (collision()) {
+                    piece.position.x++;
+                }
+            } else if (event.keyCode === 39) { // 右箭头
+                piece.position.x++;
+                if (collision()) {
+                    piece.position.x--;
+                }
+            } else if (event.keyCode === 40) { // 下箭头
+                piece.position.y++;
+                if (collision()) {
+                    piece.position.y--;
+                    merge();
+                    removeRows();
+                    piece.position = {x: 5, y: 0};
+                    piece.shape = tetrominoes[Math.floor(Math.random() * tetrominoes.length)];
+                }
+            } else if (event.keyCode === 38) { // 上箭头（旋转）
+                const rotated = [];
+                for (let i = 0; i < piece.shape[0].length; i++) {
+                    const row = [];
+                    for (let j = piece.shape.length - 1; j >= 0; j--) {
+                        row.push(piece.shape[j][i]);
+                    }
+                    rotated.push(row);
+                }
+                const previousShape = piece.shape;
+                piece.shape = rotated;
+                if (collision()) {
+                    piece.shape = previousShape;
+                }
+            }
+            // 每次按键后重新绘制游戏状态
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            drawBoard();
+            drawPiece();
+        });
+
+        // 初始绘制空白游戏板
+        drawBoard();
+    </script>
+</body>
+</html>
